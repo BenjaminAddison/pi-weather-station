@@ -34,6 +34,9 @@ if ($actual -ne $expected) { throw "sha256 mismatch: $actual, the .sha256 file s
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "GitHub CLI not found: winget install GitHub.cli, then gh auth login"
 }
+# gh finds the GitHub repo from the git checkout it runs in, so run from this repo
+# whatever folder the script was started from (the image path is already resolved)
+Set-Location (Split-Path $PSScriptRoot -Parent)
 gh release view $Tag --json tagName,isDraft | Out-Null
 Check-Exit "gh release view $Tag (push the tag first; the workflow creates the draft release)"
 
