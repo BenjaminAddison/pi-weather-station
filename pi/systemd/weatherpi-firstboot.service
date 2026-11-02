@@ -1,0 +1,20 @@
+[Unit]
+Description=WeatherPi first-boot setup (USB gadget, SSH host keys, data dirs, read-only root)
+# Runs once: firstboot.sh creates this file when it finishes.
+ConditionPathExists=!/var/lib/weatherpi/firstboot.done
+After=local-fs.target NetworkManager.service
+Before=weatherpi-logger.service weatherpi-web.service weatherpi-agent.service
+Before=weatherpi-backup.service ssh.service ssh.socket
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Needs root and write access to /etc: no sandboxing.
+User=root
+ExecStart=/opt/weatherpi/firstboot.sh
+TimeoutStartSec=10min
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

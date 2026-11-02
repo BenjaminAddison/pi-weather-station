@@ -1,0 +1,89 @@
+# Build the WeatherPi Companion installer and publish it on the GitHub Releases page.
+# See docs/companion-app.md "Auto-build releases on GitHub".
+#
+# * Push a version tag (git tag v0.2.0 && git push origin v0.2.0): tests, build, then the
+#   installer and its .sha256 are attached to the "v0.2.0" release. If that release exists (e.g.
+#   the SD card image was uploaded to it by hand) the installer is added; otherwise it's created
+#   as a DRAFT, to publish once the image is attached (the flasher reads releases/latest).
+#   The tag must match __version__ in app/weatherpi_companion/__init__.py.
+# * Run it by hand (Actions -> Release -> Run workflow): same build, the installer is kept as a
+#   workflow artifact only; nothing is published.
+# The Pi image isn't built here (it needs the privileged builder container, D17).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: app/pyproject.toml
+
+      - name: Install the app and its dev tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "app[dev]"
+
+      - name: Lint
+        run: ruff check app
+
+      - name: App tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest app/tests -q
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        shell: powershell
+        run: |
+          $expect = ""
+          if ("${{ github.ref_type }}" -eq "tag") { $expect = "${{ github.ref_name }}".TrimStart("v") }
+          & installer\build.ps1 -Python (Get-Command python).Source -ExpectVersion $expect
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            dist/WeatherPi-Companion-Setup-*.exe
+            dist/WeatherPi-Companion-Setup-*.exe.sha256
+          if-no-files-found: error
+
+      - name: Publish to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          files=(dist/WeatherPi-Companion-Setup-*.exe dist/WeatherPi-Companion-Setup-*.exe.sha256)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            # A draft: the app's flasher reads releases/latest for the SD card image, so a
+            # published release without weatherpi-*.img.xz would break it for every owner.
+            # owner-facing instructions (installer/release-notes.md, {VERSION} filled in)
+            sed "s/{VERSION}/${TAG#v}/g" installer/release-notes.md > release-notes.md
+            gh release create "$TAG" "${files[@]}" --draft --title "WeatherPi ${TAG#v}" \
+              --notes-file release-notes.md
+            echo "::warning::Created release $TAG as a draft. Attach the SD card image with tools/publish-image.ps1 -Tag $TAG -Image <weatherpi-...img.xz> -Publish"
+          fi

@@ -1,0 +1,16 @@
+[Unit]
+Description=WeatherPi WiFi watchdog (reconnects WiFi, never reboots)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+Environment=PYTHONPATH=/opt/weatherpi
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/weatherpi/scripts/wifi_watchdog.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

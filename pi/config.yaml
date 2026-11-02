@@ -1,0 +1,42 @@
+# /etc/weatherpi/config.yaml — single source of truth for the WeatherPi services.
+station:
+  name: "WeatherPi"
+  location: "Garden"
+
+temp:
+  gpio_pin: 9            # DS18B20 1-Wire, BCM 9 / physical 21 (dtoverlay=w1-gpio,gpiopin=9)
+  poll_interval: 30
+  write_interval: 300
+
+rain:
+  gpio_pin: 17           # tipping bucket reed switch, BCM 17 / physical 11, pull-up
+  mm_per_tip: 0.2794
+  bounce_time: 0.5
+
+logger:
+  heartbeat_interval: 300
+
+database:
+  path: "/var/lib/weatherpi/db/weatherpi.db"
+
+backup:
+  backup_dir: "/var/backups/weatherpi"
+  retention_days: 7
+
+web:
+  host: "127.0.0.1"      # reached via tailscale serve (and the companion app)
+  port: 8080
+  refresh_interval: 60
+  stale_threshold: 600
+  cache_ttl: 300
+
+agent:
+  port: 8765
+  interfaces: ["usb0", "tailscale0"]
+
+tailscale:
+  serve_port: 8080
+
+wifi:
+  ping_target: "1.1.1.1"
+  check_interval: 300

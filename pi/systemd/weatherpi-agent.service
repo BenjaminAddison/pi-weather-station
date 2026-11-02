@@ -1,0 +1,19 @@
+[Unit]
+Description=WeatherPi agent (setup/monitoring API on :8765, usb0 + tailscale0 only)
+After=network.target NetworkManager.service tailscaled.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# Runs as root: it sets passwords, writes sshd/NM config, drives tailscale and reboots.
+# No ProtectSystem here for the same reason; nftables limits who can reach it.
+User=root
+Environment=PYTHONPATH=/opt/weatherpi
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/weatherpi
+ExecStart=/usr/bin/python3 -m weatherpi.agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

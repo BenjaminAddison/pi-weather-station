@@ -1,0 +1,34 @@
+WeatherPi Companion: third-party software
+==========================================
+
+WeatherPi Companion itself is under the MIT licence (WeatherPi-Companion-LICENSE.txt).
+It is built with, and ships, the following software. Each keeps its own licence.
+
+Bundled with the app (in this folder's parent, _internal\)
+-----------------------------------------------------------
+Python 3.12            PSF License                 https://docs.python.org/3/license.html
+Qt 6 / PySide6 6.12    LGPL-3.0                    https://www.qt.io/licensing/  https://code.qt.io/
+                       Qt is used as unmodified, dynamically linked libraries (the Qt6*.dll
+                       files), which you may replace with your own build of the same version.
+                       Qt WebEngine includes Chromium; its licences are listed at
+                       https://doc.qt.io/qt-6/qtwebengine-licensing.html
+shiboken6              LGPL-3.0                    https://code.qt.io/
+httpx, httpcore, idna  BSD-3-Clause                https://github.com/encode/httpx
+h11, anyio             MIT
+cryptography           Apache-2.0 or BSD-3-Clause  https://github.com/pyca/cryptography
+                       (includes OpenSSL, Apache-2.0)
+paramiko               LGPL-2.1                    https://github.com/paramiko/paramiko
+bcrypt, PyNaCl         Apache-2.0
+cffi                   MIT-0
+certifi                MPL-2.0                     https://github.com/certifi/python-certifi
+
+Bundled with the installer
+--------------------------
+Raspberry Pi USB gadget driver setup (rpi-usb-gadget-driver-setup.exe, v1.0.6)
+                       Apache-2.0 (rpi-usb-gadget-driver-LICENSE.txt)
+                       https://github.com/raspberrypi/rpi-usb-gadget
+
+Not bundled
+-----------
+Tailscale for Windows is downloaded from tailscale.com while installing (if it's missing)
+and is covered by Tailscale's own terms: https://tailscale.com/terms

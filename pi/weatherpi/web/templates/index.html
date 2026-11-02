@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ station_name }}</title>
+<script src="/static/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 0.5rem; }
+  .container { max-width: 640px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .station-name { font-size: 1.1rem; font-weight: 600; }
+  .status { font-size: 0.875rem; }
+  .stale { color: #b91c1c; font-weight: 600; }
+  .ok { color: #15803d; }
+  .export { display: flex; gap: 0.25rem; align-items: center; font-size: 0.875rem; }
+  .export select { padding: 0.2rem 0.25rem; border: 1px solid #ccc; border-radius: 0.375rem; background: white; font-size: 0.875rem; }
+  .export a { text-decoration: none; color: white; background: #2563eb; padding: 0.25rem 0.5rem; border-radius: 0.375rem; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .card { background: white; border-radius: 0.75rem; padding: 0.75rem; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .value { font-size: 2rem; font-weight: 700; color: #111; }
+  .unit { font-size: 1rem; color: #666; }
+  .label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.1rem; }
+  .chart { background: white; border-radius: 0.75rem; padding: 0.5rem; margin-bottom: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .chart canvas { max-height: 180px; }
+  .alert { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 0.5rem; display: none; font-size: 0.875rem; }
+  @media (max-width: 480px) {
+    .cards { grid-template-columns: 1fr; }
+    .value { font-size: 1.75rem; }
+    .header { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="station-name">{{ station_name }}</div>
+    <div id="status" class="ok">Online</div>
+    <div class="export">
+      <select id="csvRange">
+        <option value="24h">Last 24h</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="all">All time</option>
+      </select>
+      <a id="csvDownload" href="/api/export.csv?range=24h">Download CSV</a>
+    </div>
+  </div>
+  <div id="alert" class="alert">Logger is offline or stale.</div>
+  <div class="cards">
+    <div class="card">
+      <div class="value" id="temp">--</div>
+      <div class="unit" id="tempUnit">°C</div>
+      <div class="label">Temperature</div>
+    </div>
+    <div class="card">
+      <div class="value" id="rain">--</div>
+      <div class="unit" id="rainUnit">mm</div>
+      <div class="label">Rain Today</div>
+    </div>
+  </div>
+  <div class="chart">
+    <canvas id="tempChart"></canvas>
+  </div>
+  <div class="chart">
+    <canvas id="rainChart"></canvas>
+  </div>
+</div>
+
+<script>
+const REFRESH = {{ refresh_interval }} * 1000;
+const STALE = {{ stale_threshold }} * 1000;
+let tempChart, rainChart;
+
+async function loadData() {
+  try {
+    const [curr, hist, health] = await Promise.all([
+      fetch('/api/current').then(r => r.json()),
+      fetch('/api/history?range=24h').then(r => r.json()),
+      fetch('/health').then(r => r.json())
+    ]);
+
+    document.getElementById('temp').textContent = curr.temp_c != null ? curr.temp_c.toFixed(1) : '--';
+    document.getElementById('tempUnit').textContent = curr.temp_present === false ? '°C · sensor not found' : '°C';
+    document.getElementById('rain').textContent = curr.rain_mm_today != null ? curr.rain_mm_today.toFixed(1) : '--';
+    document.getElementById('rainUnit').textContent = `mm (${curr.rain_today} ${curr.rain_today === 1 ? 'tip' : 'tips'})`;
+
+    const statusEl = document.getElementById('status');
+    const alertEl = document.getElementById('alert');
+    if (health.logger_alive) {
+      statusEl.textContent = `Online · last update ${Math.floor(health.stale_seconds)}s ago`;
+      statusEl.className = 'ok';
+      alertEl.style.display = 'none';
+    } else {
+      statusEl.textContent = 'Offline / stale';
+      statusEl.className = 'stale';
+      alertEl.style.display = 'block';
+    }
+
+    const tempCtx = document.getElementById('tempChart').getContext('2d');
+    const rainCtx = document.getElementById('rainChart').getContext('2d');
+
+    if (tempChart) tempChart.destroy();
+    if (rainChart) rainChart.destroy();
+
+    const labels = hist.temps.map(t => new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    const data = hist.temps.map(t => t.temp_c);
+
+    tempChart = new Chart(tempCtx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Temp °C', data, borderColor: '#2563eb', tension: 0.2, pointRadius: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
+    });
+
+    const rainBuckets = {};
+    hist.rains.forEach(r => {
+      const d = new Date(r);
+      const key = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      rainBuckets[key] = (rainBuckets[key] || 0) + 1;
+    });
+    const rainLabels = Object.keys(rainBuckets);
+    const rainData = Object.values(rainBuckets);
+
+    rainChart = new Chart(rainCtx, {
+      type: 'bar',
+      data: { labels: rainLabels, datasets: [{ label: 'Rain tips', data: rainData, backgroundColor: '#0ea5e9' }] },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+  } catch (e) {
+    console.error('Failed to load data', e);
+  }
+}
+
+document.getElementById('csvRange').addEventListener('change', (e) => {
+  document.getElementById('csvDownload').href = '/api/export.csv?range=' + e.target.value;
+});
+
+loadData();
+setInterval(loadData, REFRESH);
+</script>
+</body>
+</html>

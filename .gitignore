@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+# Build outputs
+build/
+dist/
+*.img
+*.img.xz
+# Third-party installers (downloaded, not committed)
+installer/vendor/*
+!installer/vendor/README.md
+# Local secrets / data never committed
+*.dpapi
+RECOVERY.txt
+id_ed25519*
+*.db
+*.db-wal
+*.db-shm

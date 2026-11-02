@@ -1,0 +1,41 @@
+[Unit]
+Description=WeatherPi dashboard (127.0.0.1:8080, exposed via tailscale serve)
+After=local-fs.target network.target weatherpi-logger.service
+
+[Service]
+Type=simple
+User=weatherpi
+Group=weatherpi
+Environment=PYTHONPATH=/opt/weatherpi
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/weatherpi
+ExecStart=/usr/bin/python3 -m weatherpi.web
+Restart=always
+RestartSec=5
+
+# Hardening. The DB dir stays writable: SQLite WAL readers need the -shm file.
+StateDirectory=weatherpi/db
+StateDirectoryMode=0750
+ProtectSystem=strict
+ReadWritePaths=/var/lib/weatherpi/db
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelLogs=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+ProtectClock=yes
+
+[Install]
+WantedBy=multi-user.target

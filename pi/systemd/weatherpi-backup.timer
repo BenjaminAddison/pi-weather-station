@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily WeatherPi database backup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30min
+# Catch up after the Pi was off at the scheduled time.
+Persistent=true
+Unit=weatherpi-backup.service
+
+[Install]
+WantedBy=timers.target

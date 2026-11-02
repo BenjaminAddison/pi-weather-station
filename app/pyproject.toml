@@ -1,0 +1,36 @@
+[project]
+name = "weatherpi-companion"
+version = "0.1.0"
+description = "Setup and monitoring app for the WeatherPi weather station"
+requires-python = ">=3.12"
+dependencies = [
+  "PySide6>=6.7",
+  "httpx>=0.27",
+  "cryptography>=42",
+  "paramiko>=3.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4.4", "ruff>=0.6", "pyinstaller>=6.6"]
+
+[project.scripts]
+weatherpi-companion = "weatherpi_companion.__main__:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["weatherpi_companion*"]
+
+[tool.setuptools.package-data]
+"weatherpi_companion.resources" = ["*.md", "*.png", "*.svg", "*.ico"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+extend = "../ruff.toml"
+
+[tool.ruff.lint.isort]
+known-first-party = ["weatherpi_companion"]

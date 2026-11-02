@@ -1,0 +1,13 @@
+[Unit]
+Description=WeatherPi nightly database backup
+After=local-fs.target weatherpi-firstboot.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=PYTHONPATH=/opt/weatherpi
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/weatherpi/scripts/backup.sh
+Nice=10
+IOSchedulingClass=idle
+# Started by weatherpi-backup.timer; no [Install] section on purpose.

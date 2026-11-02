@@ -1,0 +1,43 @@
+[Unit]
+Description=WeatherPi sensor logger (rain gauge + temperature -> SQLite)
+After=local-fs.target time-sync.target
+
+[Service]
+Type=simple
+User=weatherpi
+Group=weatherpi
+SupplementaryGroups=gpio
+Environment=PYTHONPATH=/opt/weatherpi GPIOZERO_PIN_FACTORY=lgpio
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# lgpio creates its notify FIFOs in the working dir (or $LG_WD): give it a writable one.
+RuntimeDirectory=weatherpi-logger
+WorkingDirectory=/run/weatherpi-logger
+Environment=LG_WD=/run/weatherpi-logger
+ExecStart=/usr/bin/python3 -m weatherpi.logger
+Restart=always
+RestartSec=5
+
+# Hardening. GPIO (/dev/gpiochip*) and 1-Wire (/sys/bus/w1) must stay reachable,
+# so no PrivateDevices/ProtectKernelTunables/ProtectClock (device policy) here.
+StateDirectory=weatherpi/db
+StateDirectoryMode=0750
+ProtectSystem=strict
+ReadWritePaths=/var/lib/weatherpi/db
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelLogs=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
