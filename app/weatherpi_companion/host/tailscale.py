@@ -14,6 +14,13 @@ Logging in a logged-out host
   merely ``Stopped`` (logged in but disconnected) ``tailscale up`` just reconnects and no
   URL is needed. On Linux ``tailscale up`` needs root unless the user is the Tailscale
   *operator* (``sudo tailscale set --operator=$USER``).
+
+Switched off
+------------
+Tailscale can be switched off on this PC (tray icon "Disconnect", ``tailscale down``) while
+it stays signed in: ``BackendState`` is then ``Stopped``. The app's checks switch it back on
+by themselves with :func:`ensure_running` (a bare ``tailscale up``), because the WeatherPi is
+only reachable over the tailnet (D23).
 """
 
 from __future__ import annotations
@@ -230,6 +237,15 @@ class HostTailscale:
                         f"--timeout={timeout_s}s", target, timeout=timeout_s + 10)
         return parse_ping(res)
 
+    def switch_on(self, timeout_s: float = 30.0) -> CommandResult:
+        """Switch a signed-in but ``Stopped`` Tailscale back on: a bare ``tailscale up``.
+
+        No flags at all: a bare ``up`` only reconnects, while any flag (even ``--timeout``)
+        makes the CLI refuse when settings were changed in the Tailscale app ("requires
+        mentioning all non-default flags"). It returns once the backend is Running.
+        """
+        return self._run("up", timeout=timeout_s)
+
     def up_args(self, timeout_s: int) -> list[str]:
         cli = self.cli
         if not cli:
@@ -257,6 +273,35 @@ def parse_ping(res: CommandResult) -> PingResult:
     via = via_raw if via_raw.startswith("DERP") else ("direct" if via_raw else None)
     latency = float(m.group(3)) if m.group(3) else None
     return PingResult(True, via, latency, out.strip())
+
+
+# --------------------------------------------------------------------------- switched off
+
+
+@dataclass
+class EnsureResult:
+    status: HostTailscaleStatus
+    switched_on: bool = False  # it was Stopped and the app switched it back on
+    output: str = ""  # what ``tailscale up`` printed, when it was run
+
+
+def ensure_running(ts: HostTailscale,
+                   status: HostTailscaleStatus | None = None) -> EnsureResult:
+    """Status of Tailscale on this PC, switching it back on first if it was switched off.
+
+    Only ``Stopped`` is touched: signed out (``NeedsLogin``) needs the owner, and ``NoState``
+    is the Windows tray app's job. Raises TailscaleError like :meth:`HostTailscale.status`.
+    """
+    st = status if status is not None else ts.status()
+    if st.backend_state != "Stopped":
+        return EnsureResult(st)
+    res = ts.switch_on()
+    out = ((res.stdout or "") + (res.stderr or "")).strip()
+    try:
+        new = ts.status()
+    except TailscaleError:
+        return EnsureResult(st, output=out)
+    return EnsureResult(new, switched_on=new.backend_state != "Stopped", output=out)
 
 
 # --------------------------------------------------------------------------- helpers

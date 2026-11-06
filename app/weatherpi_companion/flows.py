@@ -1065,28 +1065,36 @@ class SetupSession:
                           "computer.", action=Action.INSTALL_TAILSCALE,
                           url="https://tailscale.com/download")]
         try:
-            st = ts.status()
+            ensured = host_ts.ensure_running(ts)  # switched off: switch it back on
         except host_ts.TailscaleError as exc:
             gui = self.env.tailscale_gui()
             return [_fail("host_tailscale_not_running", "Tailscale isn't running on this "
                           "computer. Start the Tailscale app, then try again.", str(exc),
                           Action.OPEN_TAILSCALE_APP if gui else Action.RETRY, path=gui)]
+        st = ensured.status
         self.host_ts = st
         state = st.backend_state
         if st.running:
             who = st.tailnet_name or st.magic_dns_suffix or "your account"
-            return [_ok("host_tailscale_running", f"Tailscale is on and signed in as {who}.",
-                        f"tailnet {st.magic_dns_suffix}, ip {st.self_ipv4}",
+            msg = f"Tailscale is on and signed in as {who}."
+            detail = f"tailnet {st.magic_dns_suffix}, ip {st.self_ipv4}"
+            if ensured.switched_on:
+                msg = f"Tailscale was switched off on this computer, so the app switched it " \
+                      f"back on. It's signed in as {who}."
+                detail = "was Stopped; ran `tailscale up`; " + detail
+            return [_ok("host_tailscale_running", msg, detail,
                         tailnet_name=st.tailnet_name, tailnet=st.magic_dns_suffix,
-                        ip=st.self_ipv4)]
+                        ip=st.self_ipv4, switched_on=ensured.switched_on)]
         if st.needs_login:
             return [_fail("host_tailscale_logged_out", "Sign in to Tailscale on this computer. "
                           "Click Sign in; your web browser will open.", state,
                           Action.HOST_TAILSCALE_LOGIN, auth_url=st.auth_url)]
-        if state == "Stopped":
+        if state == "Stopped":  # the app tried `tailscale up` and it didn't come on
             return [_fail("host_tailscale_stopped", "Tailscale is switched off on this "
-                          "computer. Click Connect (or switch it on from the Tailscale icon).",
-                          state, Action.HOST_TAILSCALE_LOGIN)]
+                          "computer and the app couldn't switch it on. Click Connect (or "
+                          "switch it on from the Tailscale icon).",
+                          "; ".join(x for x in (state, ensured.output) if x),
+                          Action.HOST_TAILSCALE_LOGIN)]
         if state == "NoState":
             # On Windows the tray app starts the backend; if it isn't running (e.g. Tailscale
             # was taken out of the startup apps) NoState never ends by itself.
@@ -1287,9 +1295,17 @@ class SetupSession:
         if not target_ip:
             return [_fail("no_tailnet_ip", "We don't know the WeatherPi's Tailscale address yet. "
                           "Go back one step.", action=Action.RETRY)]
-        # 1. ping
         ts = self.env.tailscale
         assert ts is not None
+        # 0. Tailscale on this PC may have been switched off since page 6: switch it back on
+        try:
+            if host_ts.ensure_running(ts).switched_on:
+                checks.append(_ok("host_tailscale_switched_on", "Tailscale was switched off "
+                                  "on this computer, so the app switched it back on.",
+                                  "was Stopped; ran `tailscale up`"))
+        except host_ts.TailscaleError:
+            pass  # the ping below reports it
+        # 1. ping
         ping = None
         for i in range(max(1, ping_attempts)):
             try:

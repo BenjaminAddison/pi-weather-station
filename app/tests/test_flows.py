@@ -637,6 +637,42 @@ def test_host_tailscale_states(app_data, state, code, action):
     assert c[0].code == code and c[0].action == action
 
 
+def _up_switches_on(w) -> None:
+    def up(_argv):
+        w.host_state["state"] = "Running"
+        return CommandResult(0, "")
+
+    w.runner.rules.insert(0, (r"tailscale\.exe up$", up))
+
+
+def test_host_tailscale_switched_off_is_switched_back_on(app_data):
+    s, w = make_session(app_data)
+    w.host_state["state"] = "Stopped"
+    _up_switches_on(w)
+    c = s.check_host_tailscale()
+    assert all_ok(c) and c[0].code == "host_tailscale_running"
+    assert c[0].data["switched_on"] and "switched it back on" in c[0].message_for_owner
+    assert [CLI, "up"] in w.runner.calls
+    assert s.check_host_tailscale()[0].data["switched_on"] is False  # already on now
+
+
+def test_host_tailscale_not_switched_on_when_signed_out(app_data):
+    s, w = make_session(app_data)
+    w.host_state["state"] = "NeedsLogin"
+    _up_switches_on(w)
+    assert s.check_host_tailscale()[0].code == "host_tailscale_logged_out"
+    assert not w.runner.ran(r" up")
+
+
+def test_host_tailscale_switch_on_fails(app_data):
+    s, w = make_session(app_data)
+    w.host_state["state"] = "Stopped"
+    w.runner.rules.insert(0, (r"tailscale\.exe up$", CommandResult(1, "", "access denied")))
+    c = s.check_host_tailscale()
+    assert c[0].code == "host_tailscale_stopped" and c[0].action == Action.HOST_TAILSCALE_LOGIN
+    assert "access denied" in c[0].detail
+
+
 def _tray(w, running: bool) -> None:
     out = '"tailscale-ipn.exe","5120"\n' if running else "INFO: No tasks are running.\n"
     w.runner.rules.insert(0, ("tasklist", CommandResult(0, out)))
@@ -834,6 +870,16 @@ def test_final_checks_agent_unreachable_over_tailnet(app_data):
     w.broken_hosts |= {"weatherpi.example.ts.net", "100.94.2.31"}
     c = s.final_checks()
     assert "agent_tailnet_unreachable" in codes(c) and "sensors_unknown" in codes(c)
+
+
+def test_final_checks_switch_host_tailscale_back_on(app_data):
+    s, w = ready_for_final(app_data)
+    w.host_state["state"] = "Stopped"  # switched off after page 6
+    _up_switches_on(w)
+    c = s.final_checks()
+    assert all_ok(c), c
+    assert c[0].code == "host_tailscale_switched_on" and c[0].ok
+    assert [CLI, "up"] in w.runner.calls
 
 
 def test_final_checks_needs_tailnet_ip(app_data):

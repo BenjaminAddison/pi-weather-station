@@ -889,7 +889,8 @@ class HostTailscalePage(WizardPage):
         self.after.addWidget(self.note)
         self.checks.transform = lambda c: (
             dataclasses.replace(c, message_for_owner="Tailscale is on and signed in.")
-            if c.code == "host_tailscale_running" and c.data.get("tailnet_name") else c)
+            if c.code == "host_tailscale_running" and c.data.get("tailnet_name")
+            and not c.data.get("switched_on") else c)
         self.actions[Action.HOST_TAILSCALE_LOGIN] = lambda _c: self.login()
         self.actions[Action.OPEN_TAILSCALE_APP] = self._open_app
         self.checks.code_labels["host_tailscale_not_started"] = "Start Tailscale"

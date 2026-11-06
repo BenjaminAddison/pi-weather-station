@@ -220,3 +220,42 @@ def test_gui_running_from_tasklist():
     assert ts.gui_running(stopped, platform="win32") is False
     assert ts.gui_running(FakeRunner(), platform="win32") is None  # tasklist failed
     assert ts.gui_running(running, platform="linux") is None
+
+
+def _stateful(state: dict) -> FakeRunner:
+    r = FakeRunner()
+    r.on_call("status --json", lambda a: CommandResult(
+        0 if state["s"] == "Running" else 1, host_status_json(state["s"])))
+    return r
+
+
+def test_ensure_running_switches_a_stopped_host_back_on():
+    state = {"s": "Stopped"}
+    r = _stateful(state)
+
+    def up(argv):
+        state["s"] = "Running"
+        return CommandResult(0, "")
+
+    r.on_call(r"tailscale\.exe up$", up)
+    res = ts.ensure_running(make(r))
+    assert res.switched_on and res.status.running
+    # a bare `up`: any flag trips "requires mentioning all non-default flags"
+    assert [CLI, "up"] in r.calls
+
+
+def test_ensure_running_leaves_other_states_alone():
+    for s in ("Running", "NeedsLogin", "NoState", "Starting"):
+        state = {"s": s}
+        r = _stateful(state)
+        res = ts.ensure_running(make(r))
+        assert not res.switched_on and res.status.backend_state == s
+        assert not r.ran(r" up")
+
+
+def test_ensure_running_up_fails():
+    r = _stateful({"s": "Stopped"})
+    r.on(r"tailscale\.exe up$", stderr="access denied", returncode=1)
+    res = ts.ensure_running(make(r))
+    assert not res.switched_on and res.status.backend_state == "Stopped"
+    assert res.output == "access denied"

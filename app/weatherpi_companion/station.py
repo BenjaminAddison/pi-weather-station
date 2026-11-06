@@ -29,6 +29,8 @@ from .host import usb as host_usb
 from .secrets import StationProfile, StationSecrets, StationStore
 
 PROBE_TIMEOUT = 4.0
+#: diagnose_offline switched Tailscale on this PC back on; refresh() then tries again
+SWITCHED_ON = "host_tailscale_switched_on"
 
 
 @dataclass
@@ -112,7 +114,12 @@ def diagnose_offline(
                                "here.", action=Action.INSTALL_TAILSCALE))
     else:
         try:
-            st = ts.status()
+            ensured = host_ts.ensure_running(ts)  # switched off: switch it back on
+            st: host_ts.HostTailscaleStatus | None = ensured.status
+            if ensured.switched_on:
+                out.append(CheckResult(True, SWITCHED_ON, "Tailscale was switched off on this "
+                                       "computer, so the app switched it back on.",
+                                       "was Stopped; ran `tailscale up`"))
         except host_ts.TailscaleError as exc:
             st = None
             out.append(CheckResult(False, "host_tailscale_not_running", "Tailscale isn't "
@@ -213,6 +220,21 @@ class StationMonitor:
             self.conn = None
 
     def refresh(self) -> StationStatus:
+        st = self._fetch()
+        if st is not None:
+            return st
+        diagnosis = diagnose_offline(self.profile, self.env)
+        if any(c.code == SWITCHED_ON for c in diagnosis):
+            # Tailscale on this PC was off and is back on: the Pi may answer now
+            st = self._fetch()
+            if st is not None:
+                return st
+            switched = [c for c in diagnosis if c.code == SWITCHED_ON]
+            diagnosis = switched + diagnose_offline(self.profile, self.env)
+        return StationStatus(False, error="unreachable", diagnosis=diagnosis)
+
+    def _fetch(self) -> StationStatus | None:
+        """Status from the Pi, or None when it can't be reached."""
         for attempt in range(2):
             client = self.client()
             if client is None:
@@ -236,8 +258,7 @@ class StationMonitor:
                         "to reconnect.", str(exc), Action.RECOVER)])
                 if attempt == 1:
                     break
-        return StationStatus(False, error="unreachable",
-                             diagnosis=diagnose_offline(self.profile, self.env))
+        return None
 
     def _remember(self, info: AgentInfo) -> None:
         prof = self.profile

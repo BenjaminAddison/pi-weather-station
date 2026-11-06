@@ -133,3 +133,9 @@ scripts from the internet.
   and the gauge cable connection.
 - **Dashboard not loading:** both devices must be signed in to Tailscale with the **same
   account**; `tailscale serve status` on the Pi should show port 8080.
+- **Tailscale switched off on the owner's computer** (`Stopped`, e.g. "Disconnect" from the
+  Tailscale icon): the app's checks switch it back on by themselves with `tailscale up`
+  and say so (`host_tailscale_switched_on`, or `switched_on` on `host_tailscale_running`).
+  If `host_tailscale_stopped` is still failing, that didn't work: the owner should switch it
+  on from the Tailscale icon near the clock. Signed out (`NeedsLogin`) needs the owner to
+  sign in; the app never does that by itself.

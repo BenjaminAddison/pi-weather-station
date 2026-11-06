@@ -135,6 +135,56 @@ def test_offline_diagnosis_variants(app_data):
     assert [x.code for x in d] == ["agent_not_answering", "usb_no_agent"]
 
 
+def test_offline_because_host_tailscale_switched_off_switches_it_back_on(app_data):
+    agent = FakeAgent()
+    mon, _ = setup_station(app_data, agent)
+    state = {"s": "Stopped"}
+    runner = FakeRunner()
+    runner.on_call("status --json", lambda a: CommandResult(
+        0 if state["s"] == "Running" else 1, host_status_json(state["s"])))
+
+    def up(_argv):
+        state["s"] = "Running"
+        return CommandResult(0, "")
+
+    runner.on_call(r"tailscale\.exe up$", up)
+    mon.env.runner = runner
+    mon.env.tailscale = ts.HostTailscale(runner, cli=CLI)
+    good = mon.env.client_factory
+
+    def factory(url, token, via):
+        if state["s"] != "Running":  # the tailnet is down while Tailscale is off
+            def refuse(req):
+                raise httpx.ConnectError("no route", request=req)
+            return AgentClient(url, token, via=via, transport=httpx.MockTransport(refuse))
+        return good(url, token, via)
+
+    mon.env.client_factory = factory
+    st = mon.refresh()
+    assert st.online and st.via == "tailscale"
+    assert [CLI, "up"] in runner.calls
+
+
+def test_offline_diagnosis_says_tailscale_was_switched_back_on(app_data):
+    agent = FakeAgent()
+    mon, _ = setup_station(app_data, agent, broken={"weatherpi.example.ts.net", "100.94.2.31",
+                                                    "usb"})
+    state = {"s": "Stopped"}
+    mon.env.runner.rules.insert(0, ("status --json", lambda a: CommandResult(
+        0, host_status_json(state["s"]))))
+
+    def up(_argv):
+        state["s"] = "Running"
+        return CommandResult(0, "")
+
+    mon.env.runner.on_call(r"tailscale\.exe up$", up)
+    st = mon.refresh()
+    assert not st.online
+    assert [c.code for c in st.diagnosis] == ["host_tailscale_switched_on",
+                                              "agent_not_answering"]
+    assert st.diagnosis[0].ok
+
+
 def test_ago():
     now = datetime(2026, 10, 19, 12, tzinfo=UTC)
     assert station._ago("2026-10-19T11:59:30Z", now) == "just now"
